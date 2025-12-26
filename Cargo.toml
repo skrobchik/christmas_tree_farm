@@ -1,0 +1,11 @@
+[package]
+name = "christmas_tree_farm"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+itertools = "0.14.0"
+ndarray = "0.17.1"
+rustsat = "0.7.4"
+rustsat-batsat = "0.7.4"
+rustsat-minisat = "0.7.4"
