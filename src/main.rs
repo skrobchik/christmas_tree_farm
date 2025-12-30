@@ -2,15 +2,17 @@ use std::str::FromStr;
 
 use itertools::Itertools;
 use rustsat::solvers::Solve;
+use rustsat::types::Assignment;
 use rustsat::{
-    encodings::CollectClauses,
     instances::SatInstance,
     solvers::SolverResult,
     types::{Lit, constraints::CardConstraint},
 };
 
+const PRESENT_SIZE: usize = 3;
+
 #[derive(Debug)]
-struct PresentShape([[bool; 3]; 3]);
+struct PresentShape([[bool; PRESENT_SIZE]; PRESENT_SIZE]);
 
 #[derive(Debug)]
 struct Query {
@@ -55,7 +57,7 @@ fn parse_input(input: &str) -> Result<(Vec<PresentShape>, Vec<Query>), Box<dyn s
         };
         let is_shape = first_line.ends_with(":");
         if is_shape {
-            let mut shape = [[false; 3]; 3];
+            let mut shape = [[false; PRESENT_SIZE]; PRESENT_SIZE];
             let mut i = 0;
             while let Some(line) = group.next() {
                 for (j, c) in line.chars().enumerate() {
@@ -74,30 +76,68 @@ fn parse_input(input: &str) -> Result<(Vec<PresentShape>, Vec<Query>), Box<dyn s
     Ok((shapes, queries))
 }
 
+struct SolutionFormatter<'a> {
+    shapes: &'a [PresentShape],
+    query: &'a Query,
+    shape_placed: &'a ndarray::Array3<Lit>,
+    solution: &'a Assignment,
+}
+
+impl<'a> std::fmt::Display for SolutionFormatter<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let rows = PRESENT_SIZE + self.query.rows; // "fake" rows and columns
+        let cols = PRESENT_SIZE + self.query.cols;
+        let mut m: ndarray::Array2<Option<usize>> = ndarray::Array::default((rows, cols));
+        for (i_shape, shape) in self.shapes.iter().enumerate() {
+            for (i, j) in (0..rows).cartesian_product(0..cols) {
+                match self.solution.lit_value(self.shape_placed[(i_shape, i, j)]) {
+                    rustsat::types::TernaryVal::True => (),
+                    rustsat::types::TernaryVal::False | rustsat::types::TernaryVal::DontCare => {
+                        continue;
+                    }
+                }
+                for (di, dj) in (0..PRESENT_SIZE).cartesian_product(0..PRESENT_SIZE) {
+                    if !shape.0[di][dj] {
+                        continue;
+                    }
+                    m[(i + di, j + dj)] = Some(i_shape);
+                }
+            }
+        }
+        for (i, j) in (0..rows).cartesian_product(0..cols) {
+            match m[(i, j)] {
+                Some(i_shape) => {
+                    assert!(i_shape < 10);
+                    write!(f, "{}", i_shape)?;
+                }
+                None => {
+                    write!(f, ".")?;
+                }
+            }
+            if j + 1 == cols && i + 1 != rows {
+                write!(f, "\n")?;
+            }
+        }
+        Ok(())
+    }
+}
+
 fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
-    let rows = query.rows;
-    let cols = query.cols;
+    let rows = PRESENT_SIZE + query.rows;
+    let cols = PRESENT_SIZE + query.cols;
     let mut instance: SatInstance = SatInstance::new();
     let shape_placed: ndarray::Array3<Lit> =
         ndarray::Array::from_shape_simple_fn((shapes.len(), rows, cols), || instance.new_lit());
     let occupied_by_shape: ndarray::Array4<Lit> =
         ndarray::Array::from_shape_simple_fn((rows, cols, rows, cols), || instance.new_lit());
-    // No place can be occupied by more than one shape
-    for (i, j) in (0..rows).cartesian_product(0..cols) {
-        let mut constraint = CardConstraint::new_eq([], 1);
-        for (i_shape, j_shape) in (0..rows).cartesian_product(0..cols) {
-            constraint.add([occupied_by_shape[(i_shape, j_shape, i, j)]]);
-        }
-        instance.add_card_constr(constraint);
-    }
     // Shape geometries
     for (i_shape, shape) in shapes.iter().enumerate() {
         for (i, j) in (0..rows).cartesian_product(0..cols) {
-            for (di, dj) in (0..3).cartesian_product(0..3) {
+            for (di, dj) in (0..PRESENT_SIZE).cartesian_product(0..PRESENT_SIZE) {
                 if !shape.0[di][dj] {
                     continue;
                 }
-                if i + di < rows && j + dj < cols {
+                if i >= PRESENT_SIZE && j >= PRESENT_SIZE && i + di < rows && j + dj < cols {
                     instance.add_lit_impl_lit(
                         shape_placed[(i_shape, i, j)],
                         occupied_by_shape[(i, j, i + di, j + dj)],
@@ -112,13 +152,24 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
             }
         }
     }
+    // No place can be occupied by more than one shape
+    for (i, j) in (0..rows).cartesian_product(0..cols) {
+        let mut literals: Vec<Lit> = Vec::new();
+        for (i_shape, j_shape) in (0..rows).cartesian_product(0..cols) {
+            literals.push(occupied_by_shape[(i_shape, j_shape, i, j)]);
+        }
+        instance.add_card_constr(CardConstraint::new_ub(literals, 1));
+    }
     // Required placed shapes
     for i_shape in 0..shapes.len() {
-        let mut constraint = CardConstraint::new_lb([], query.present_requirements[i_shape]);
+        let mut literals: Vec<Lit> = Vec::new();
         for (i, j) in (0..rows).cartesian_product(0..cols) {
-            constraint.add([shape_placed[(i_shape, i, j)]]);
+            literals.push(shape_placed[(i_shape, i, j)]);
         }
-        instance.add_card_constr(constraint);
+        instance.add_card_constr(CardConstraint::new_eq(
+            literals,
+            query.present_requirements[i_shape],
+        ));
     }
     instance.convert_to_cnf();
     let mut file =
@@ -127,7 +178,16 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
     let mut solver = rustsat_batsat::BasicSolver::default();
     solver.add_cnf(instance.into_cnf().0).unwrap();
     if matches!(solver.solve(), Ok(SolverResult::Sat)) {
-        println!("{:?}", solver.full_solution());
+        let solution = solver.full_solution().unwrap();
+        println!(
+            "{}",
+            SolutionFormatter {
+                shapes,
+                query,
+                shape_placed: &shape_placed,
+                solution: &solution
+            }
+        );
         true
     } else {
         false
