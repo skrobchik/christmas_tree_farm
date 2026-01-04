@@ -1,6 +1,8 @@
 use std::str::FromStr;
 
 use itertools::Itertools;
+use rayon::ThreadPoolBuilder;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rustsat::solvers::Solve;
 use rustsat::types::Assignment;
 use rustsat::{
@@ -10,6 +12,8 @@ use rustsat::{
 };
 
 const PRESENT_SIZE: usize = 3;
+const SOLVE: bool = false;
+const DIMACS_DIR: &str = "christmas_tree_farm";
 
 #[derive(Debug, Clone, Default)]
 struct PresentShape([[bool; PRESENT_SIZE]; PRESENT_SIZE]);
@@ -97,7 +101,13 @@ impl<'a> std::fmt::Display for SolutionFormatter<'a> {
                     }
                     rustsat::types::TernaryVal::True => (),
                 }
-                write!(f, "shape {} place at ({}, {})\n", i_shape, i, j)?;
+                write!(
+                    f,
+                    "shape {} place at ({}, {})\n",
+                    i_shape % self.num_shapes,
+                    i,
+                    j
+                )?;
                 for (di, dj) in (0..PRESENT_SIZE).cartesian_product(0..PRESENT_SIZE) {
                     if !shape.0[di][dj] {
                         continue;
@@ -110,7 +120,7 @@ impl<'a> std::fmt::Display for SolutionFormatter<'a> {
             match m[(i, j)] {
                 Some(i_shape) => {
                     assert!(self.num_shapes < 10);
-                    write!(f, "{}", i_shape % 10)?;
+                    write!(f, "{}", i_shape % self.num_shapes)?;
                 }
                 None => {
                     write!(f, ".")?;
@@ -191,43 +201,53 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
             },
         ));
     }
-    let mut instance = instance.sanitize();
-    instance.convert_to_cnf();
     let mut file =
-        std::fs::File::create(format!("christmas_tree_farm_{}.dimacs", test_case)).unwrap();
-    instance.write_dimacs(&mut file).unwrap();
-    let mut solver = rustsat_batsat::BasicSolver::default();
-    solver.add_cnf(instance.into_cnf().0).unwrap();
-    if matches!(solver.solve(), Ok(SolverResult::Sat)) {
-        let solution = solver.full_solution().unwrap();
-        println!(
-            "{}",
-            SolutionFormatter {
-                shapes: &shapes,
-                num_shapes,
-                query,
-                shape_placed: &shape_placed,
-                solution: &solution
-            }
-        );
-        true
-    } else {
-        false
+        std::fs::File::create(format!("{}/{}.dimacs", DIMACS_DIR, test_case)).unwrap();
+    let mut writter = std::io::BufWriter::new(&mut file);
+    instance.convert_to_cnf();
+    instance.write_dimacs(&mut writter).unwrap();
+    if SOLVE {
+        let mut solver = rustsat_batsat::BasicSolver::default();
+        solver.add_cnf(instance.into_cnf().0).unwrap();
+        if matches!(solver.solve(), Ok(SolverResult::Sat)) {
+            let solution = solver.full_solution().unwrap();
+            println!(
+                "{}",
+                SolutionFormatter {
+                    shapes: &shapes,
+                    num_shapes,
+                    query,
+                    shape_placed: &shape_placed,
+                    solution: &solution
+                }
+            );
+            return true;
+        }
     }
+    false
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if std::fs::exists(DIMACS_DIR)? {
+        std::fs::remove_dir_all(DIMACS_DIR)?;
+    }
+    std::fs::create_dir(DIMACS_DIR)?;
     let input = std::fs::read_to_string("input.txt")?;
     let (shapes, queries) = parse_input(&input)?;
-    let mut num_solvable = 0;
-    for (test_case, query) in queries.iter().enumerate() {
-        if solve(&query, &shapes, test_case) {
-            println!("Case #{}: YES", test_case);
-            num_solvable += 1;
-        } else {
-            println!("Case #{}: NO", test_case)
-        }
-    }
+    let cases: Vec<(usize, &Query)> = queries.iter().enumerate().collect();
+    ThreadPoolBuilder::new().num_threads(8).build_global()?;
+    let num_solvable: usize = cases
+        .par_iter()
+        .map(|(test_case, query)| {
+            if solve(query, &shapes, *test_case) {
+                println!("Case #{}: YES", test_case);
+                1
+            } else {
+                println!("Case #{}: NO", test_case);
+                0
+            }
+        })
+        .sum();
     println!(
         "Number of solvable cases: {}/{}",
         num_solvable,
