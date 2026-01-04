@@ -233,7 +233,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = std::fs::read_to_string("input.txt")?;
     let (shapes, queries) = parse_input(&input)?;
     let cases: Vec<(usize, &Query)> = queries.iter().enumerate().collect();
-    ThreadPoolBuilder::new().num_threads(32).build_global()?;
+    ThreadPoolBuilder::new().num_threads(10).build_global()?;
     let num_solvable: usize = cases
         .par_iter()
         .map(|(test_case, query)| {
