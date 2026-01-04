@@ -91,11 +91,12 @@ impl<'a> std::fmt::Display for SolutionFormatter<'a> {
         for (i_shape, shape) in self.shapes.iter().enumerate() {
             for (i, j) in (0..rows).cartesian_product(0..cols) {
                 match self.solution.lit_value(self.shape_placed[(i_shape, i, j)]) {
-                    rustsat::types::TernaryVal::True => (),
                     rustsat::types::TernaryVal::False | rustsat::types::TernaryVal::DontCare => {
                         continue;
                     }
+                    rustsat::types::TernaryVal::True => (),
                 }
+                write!(f, "shape {} place at ({}, {})\n", i_shape, i, j)?;
                 for (di, dj) in (0..PRESENT_SIZE).cartesian_product(0..PRESENT_SIZE) {
                     if !shape.0[di][dj] {
                         continue;
@@ -128,8 +129,10 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
     let mut instance: SatInstance = SatInstance::new();
     let shape_placed: ndarray::Array3<Lit> =
         ndarray::Array::from_shape_simple_fn((shapes.len(), rows, cols), || instance.new_lit());
-    let occupied_by_shape: ndarray::Array4<Lit> =
-        ndarray::Array::from_shape_simple_fn((rows, cols, rows, cols), || instance.new_lit());
+    let occupied_by_shape: ndarray::Array5<Lit> =
+        ndarray::Array::from_shape_simple_fn((shapes.len(), rows, cols, rows, cols), || {
+            instance.new_lit()
+        });
     // Shape geometries
     for (i_shape, shape) in shapes.iter().enumerate() {
         for (i, j) in (0..rows).cartesian_product(0..cols) {
@@ -140,7 +143,7 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
                 if i >= PRESENT_SIZE && j >= PRESENT_SIZE && i + di < rows && j + dj < cols {
                     instance.add_lit_impl_lit(
                         shape_placed[(i_shape, i, j)],
-                        occupied_by_shape[(i, j, i + di, j + dj)],
+                        occupied_by_shape[(i_shape, i, j, i + di, j + dj)],
                     );
                 } else {
                     // Shape would be out of bounds
@@ -155,8 +158,10 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
     // No place can be occupied by more than one shape
     for (i, j) in (0..rows).cartesian_product(0..cols) {
         let mut literals: Vec<Lit> = Vec::new();
-        for (i_shape, j_shape) in (0..rows).cartesian_product(0..cols) {
-            literals.push(occupied_by_shape[(i_shape, j_shape, i, j)]);
+        for (i_shape, (i_shape_placed, j_shape_placed)) in
+            (0..shapes.len()).cartesian_product((0..rows).cartesian_product(0..cols))
+        {
+            literals.push(occupied_by_shape[(i_shape, i_shape_placed, j_shape_placed, i, j)]);
         }
         instance.add_card_constr(CardConstraint::new_ub(literals, 1));
     }
@@ -171,6 +176,7 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
             query.present_requirements[i_shape],
         ));
     }
+    let mut instance = instance.sanitize();
     instance.convert_to_cnf();
     let mut file =
         std::fs::File::create(format!("christmas_tree_farm_{}.dimacs", test_case)).unwrap();
