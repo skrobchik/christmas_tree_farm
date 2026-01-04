@@ -12,7 +12,8 @@ use rustsat::{
 };
 
 const PRESENT_SIZE: usize = 3;
-const SOLVE: bool = false;
+const SOLVE: bool = true;
+const WRITE_DIMACS: bool = false;
 const DIMACS_DIR: &str = "christmas_tree_farm";
 
 #[derive(Debug, Clone, Default)]
@@ -196,14 +197,13 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
     }
     let mut instance = instance.sanitize();
     instance.convert_to_cnf();
-    {
-        let mut file =
-            std::fs::File::create(format!("{}/{}.dimacs", DIMACS_DIR, test_case)).unwrap();
-        let mut writter = std::io::BufWriter::new(&mut file);
-        instance.write_dimacs(&mut writter).unwrap();
+    if WRITE_DIMACS {
+        instance
+            .write_dimacs_path(format!("{}/{}.dimacs", DIMACS_DIR, test_case))
+            .unwrap();
     }
     if SOLVE {
-        let mut solver = rustsat_glucose::core::Glucose::default();
+        let mut solver = rustsat_glucose::simp::Glucose::default();
         solver.add_cnf(instance.into_cnf().0).unwrap();
         if matches!(solver.solve(), Ok(SolverResult::Sat)) {
             let solution = solver.full_solution().unwrap();
@@ -224,10 +224,12 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::fs::exists(DIMACS_DIR)? {
-        std::fs::remove_dir_all(DIMACS_DIR)?;
+    if WRITE_DIMACS {
+        if std::fs::exists(DIMACS_DIR)? {
+            std::fs::remove_dir_all(DIMACS_DIR)?;
+        }
+        std::fs::create_dir(DIMACS_DIR)?;
     }
-    std::fs::create_dir(DIMACS_DIR)?;
     let input = std::fs::read_to_string("input.txt")?;
     let (shapes, queries) = parse_input(&input)?;
     let cases: Vec<(usize, &Query)> = queries.iter().enumerate().collect();
