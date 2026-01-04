@@ -78,6 +78,7 @@ fn parse_input(input: &str) -> Result<(Vec<PresentShape>, Vec<Query>), Box<dyn s
 
 struct SolutionFormatter<'a> {
     shapes: &'a [PresentShape],
+    num_shapes: usize,
     query: &'a Query,
     shape_placed: &'a ndarray::Array3<Lit>,
     solution: &'a Assignment,
@@ -85,7 +86,7 @@ struct SolutionFormatter<'a> {
 
 impl<'a> std::fmt::Display for SolutionFormatter<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let rows = PRESENT_SIZE + self.query.rows; // "fake" rows and columns
+        let rows = PRESENT_SIZE + self.query.rows;
         let cols = PRESENT_SIZE + self.query.cols;
         let mut m: ndarray::Array2<Option<usize>> = ndarray::Array::default((rows, cols));
         for (i_shape, shape) in self.shapes.iter().enumerate() {
@@ -108,8 +109,8 @@ impl<'a> std::fmt::Display for SolutionFormatter<'a> {
         for (i, j) in (0..rows).cartesian_product(0..cols) {
             match m[(i, j)] {
                 Some(i_shape) => {
-                    assert!(i_shape < 10);
-                    write!(f, "{}", i_shape)?;
+                    assert!(self.num_shapes < 10);
+                    write!(f, "{}", i_shape % 10)?;
                 }
                 None => {
                     write!(f, ".")?;
@@ -171,19 +172,19 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
     }
 
     // Present Shape Geometry Constraints
-    for (i, j) in (0..rows).cartesian_product(0..cols) {
+    for (i, j) in (0..rows + PRESENT_SIZE - 1).cartesian_product(0..cols + PRESENT_SIZE - 1) {
         let mut literals: Vec<Lit> = Vec::new();
         for (shape_index, (i_shape, j_shape)) in (0..shapes.len()).cartesian_product(
-            (i.saturating_sub(PRESENT_SIZE - 1)..=i)
-                .cartesian_product(j.saturating_sub(PRESENT_SIZE - 1)..=j),
+            (i.saturating_sub(PRESENT_SIZE - 1)..=i.min(rows - 1))
+                .cartesian_product(j.saturating_sub(PRESENT_SIZE - 1)..=j.min(cols - 1)),
         ) {
             if shapes[shape_index].0[i - i_shape][j - j_shape] {
                 literals.push(shape_placed[(shape_index, i_shape, j_shape)]);
             }
         }
-        instance.add_card_constr(CardConstraint::new_eq(
+        instance.add_card_constr(CardConstraint::new_ub(
             literals,
-            if i >= PRESENT_SIZE && j >= PRESENT_SIZE {
+            if i >= PRESENT_SIZE && j >= PRESENT_SIZE && i < rows && j < cols {
                 1
             } else {
                 0
@@ -203,6 +204,7 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
             "{}",
             SolutionFormatter {
                 shapes: &shapes,
+                num_shapes,
                 query,
                 shape_placed: &shape_placed,
                 solution: &solution
