@@ -12,7 +12,7 @@ use rustsat::{
 };
 
 const PRESENT_SIZE: usize = 3;
-const SOLVE: bool = true;
+const SOLVE: bool = false;
 const DIMACS_DIR: &str = "christmas_tree_farm";
 
 #[derive(Debug, Clone, Default)]
@@ -194,10 +194,14 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
             },
         ));
     }
-    let mut file = std::fs::File::create(format!("{}/{}.dimacs", DIMACS_DIR, test_case)).unwrap();
-    let mut writter = std::io::BufWriter::new(&mut file);
+    let mut instance = instance.sanitize();
     instance.convert_to_cnf();
-    instance.write_dimacs(&mut writter).unwrap();
+    {
+        let mut file =
+            std::fs::File::create(format!("{}/{}.dimacs", DIMACS_DIR, test_case)).unwrap();
+        let mut writter = std::io::BufWriter::new(&mut file);
+        instance.write_dimacs(&mut writter).unwrap();
+    }
     if SOLVE {
         let mut solver = rustsat_glucose::core::Glucose::default();
         solver.add_cnf(instance.into_cnf().0).unwrap();
@@ -227,7 +231,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = std::fs::read_to_string("input.txt")?;
     let (shapes, queries) = parse_input(&input)?;
     let cases: Vec<(usize, &Query)> = queries.iter().enumerate().collect();
-    ThreadPoolBuilder::new().num_threads(8).build_global()?;
+    ThreadPoolBuilder::new().num_threads(32).build_global()?;
     let num_solvable: usize = cases
         .par_iter()
         .map(|(test_case, query)| {
