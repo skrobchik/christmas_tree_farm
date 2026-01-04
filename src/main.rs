@@ -11,7 +11,7 @@ use rustsat::{
 
 const PRESENT_SIZE: usize = 3;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 struct PresentShape([[bool; PRESENT_SIZE]; PRESENT_SIZE]);
 
 #[derive(Debug)]
@@ -123,57 +123,71 @@ impl<'a> std::fmt::Display for SolutionFormatter<'a> {
     }
 }
 
+#[must_use]
+fn rotate_shape_clockwise(shape: &PresentShape) -> PresentShape {
+    let mut shape1 = [[false; PRESENT_SIZE]; PRESENT_SIZE];
+    for ring in 0..=PRESENT_SIZE - 2 {
+        for i in 0..PRESENT_SIZE - 2 * ring {
+            let start = ring;
+            let end = PRESENT_SIZE - ring - 1;
+            shape1[start + i][end] = shape.0[start][start + i];
+            shape1[end][end - i] = shape.0[start + i][end];
+            shape1[end - i][start] = shape.0[end][end - i];
+            shape1[start][start + i] = shape.0[end - i][start];
+        }
+    }
+    PresentShape(shape1)
+}
+
 fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
     let rows = PRESENT_SIZE + query.rows;
     let cols = PRESENT_SIZE + query.cols;
     let mut instance: SatInstance = SatInstance::new();
+
+    let mut shapes: Vec<PresentShape> = shapes.into();
+    let num_shapes = shapes.len();
+    shapes.resize(num_shapes * 4, PresentShape::default());
+    for i in num_shapes..shapes.len() {
+        shapes[i] = rotate_shape_clockwise(&shapes[i - num_shapes]);
+    }
+    let shapes = shapes;
+
     let shape_placed: ndarray::Array3<Lit> =
-        ndarray::Array::from_shape_simple_fn((shapes.len(), rows, cols), || instance.new_lit());
-    let occupied_by_shape: ndarray::Array5<Lit> =
-        ndarray::Array::from_shape_simple_fn((shapes.len(), rows, cols, rows, cols), || {
-            instance.new_lit()
-        });
-    // Shape geometries
-    for (i_shape, shape) in shapes.iter().enumerate() {
+        ndarray::Array::from_shape_simple_fn((shapes.len(), rows, cols), || instance.new_lit()); // [shape, row, col]
+
+    // Present Quantity Requirements
+    for shape_index in 0..num_shapes {
+        let mut literals: Vec<Lit> = Vec::with_capacity(4 * rows * cols);
         for (i, j) in (0..rows).cartesian_product(0..cols) {
-            for (di, dj) in (0..PRESENT_SIZE).cartesian_product(0..PRESENT_SIZE) {
-                if !shape.0[di][dj] {
-                    continue;
-                }
-                if i >= PRESENT_SIZE && j >= PRESENT_SIZE && i + di < rows && j + dj < cols {
-                    instance.add_lit_impl_lit(
-                        shape_placed[(i_shape, i, j)],
-                        occupied_by_shape[(i_shape, i, j, i + di, j + dj)],
-                    );
-                } else {
-                    // Shape would be out of bounds
-                    instance.add_card_constr(CardConstraint::new_eq(
-                        [shape_placed[(i_shape, i, j)]],
-                        0,
-                    ));
-                }
-            }
-        }
-    }
-    // No place can be occupied by more than one shape
-    for (i, j) in (0..rows).cartesian_product(0..cols) {
-        let mut literals: Vec<Lit> = Vec::new();
-        for (i_shape, (i_shape_placed, j_shape_placed)) in
-            (0..shapes.len()).cartesian_product((0..rows).cartesian_product(0..cols))
-        {
-            literals.push(occupied_by_shape[(i_shape, i_shape_placed, j_shape_placed, i, j)]);
-        }
-        instance.add_card_constr(CardConstraint::new_ub(literals, 1));
-    }
-    // Required placed shapes
-    for i_shape in 0..shapes.len() {
-        let mut literals: Vec<Lit> = Vec::new();
-        for (i, j) in (0..rows).cartesian_product(0..cols) {
-            literals.push(shape_placed[(i_shape, i, j)]);
+            literals.push(shape_placed[(shape_index + 0 * num_shapes, i, j)]);
+            literals.push(shape_placed[(shape_index + 1 * num_shapes, i, j)]);
+            literals.push(shape_placed[(shape_index + 2 * num_shapes, i, j)]);
+            literals.push(shape_placed[(shape_index + 3 * num_shapes, i, j)]);
         }
         instance.add_card_constr(CardConstraint::new_eq(
             literals,
-            query.present_requirements[i_shape],
+            query.present_requirements[shape_index],
+        ));
+    }
+
+    // Present Shape Geometry Constraints
+    for (i, j) in (0..rows).cartesian_product(0..cols) {
+        let mut literals: Vec<Lit> = Vec::new();
+        for (shape_index, (i_shape, j_shape)) in (0..shapes.len()).cartesian_product(
+            (i.saturating_sub(PRESENT_SIZE - 1)..=i)
+                .cartesian_product(j.saturating_sub(PRESENT_SIZE - 1)..=j),
+        ) {
+            if shapes[shape_index].0[i - i_shape][j - j_shape] {
+                literals.push(shape_placed[(shape_index, i_shape, j_shape)]);
+            }
+        }
+        instance.add_card_constr(CardConstraint::new_eq(
+            literals,
+            if i >= PRESENT_SIZE && j >= PRESENT_SIZE {
+                1
+            } else {
+                0
+            },
         ));
     }
     let mut instance = instance.sanitize();
@@ -188,7 +202,7 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
         println!(
             "{}",
             SolutionFormatter {
-                shapes,
+                shapes: &shapes,
                 query,
                 shape_placed: &shape_placed,
                 solution: &solution
