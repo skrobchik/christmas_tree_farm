@@ -12,7 +12,7 @@ use rustsat::{
 };
 
 const PRESENT_SIZE: usize = 3;
-const SOLVE: bool = false;
+const SOLVE: bool = true;
 const DIMACS_DIR: &str = "christmas_tree_farm";
 
 #[derive(Debug, Clone, Default)]
@@ -101,13 +101,6 @@ impl<'a> std::fmt::Display for SolutionFormatter<'a> {
                     }
                     rustsat::types::TernaryVal::True => (),
                 }
-                write!(
-                    f,
-                    "shape {} place at ({}, {})\n",
-                    i_shape % self.num_shapes,
-                    i,
-                    j
-                )?;
                 for (di, dj) in (0..PRESENT_SIZE).cartesian_product(0..PRESENT_SIZE) {
                     if !shape.0[di][dj] {
                         continue;
@@ -201,13 +194,12 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
             },
         ));
     }
-    let mut file =
-        std::fs::File::create(format!("{}/{}.dimacs", DIMACS_DIR, test_case)).unwrap();
+    let mut file = std::fs::File::create(format!("{}/{}.dimacs", DIMACS_DIR, test_case)).unwrap();
     let mut writter = std::io::BufWriter::new(&mut file);
     instance.convert_to_cnf();
     instance.write_dimacs(&mut writter).unwrap();
     if SOLVE {
-        let mut solver = rustsat_batsat::BasicSolver::default();
+        let mut solver = rustsat_glucose::core::Glucose::default();
         solver.add_cnf(instance.into_cnf().0).unwrap();
         if matches!(solver.solve(), Ok(SolverResult::Sat)) {
             let solution = solver.full_solution().unwrap();

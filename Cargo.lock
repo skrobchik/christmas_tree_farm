@@ -102,6 +102,7 @@ dependencies = [
  "rayon",
  "rustsat",
  "rustsat-batsat",
+ "rustsat-glucose",
  "rustsat-minisat",
 ]
 
@@ -473,6 +474,19 @@ checksum = "7140e0e3f6d1ccc4c61e8175cca7d6ffcdf0d9ccacc3d791fc0b14b5629fea2d"
 dependencies = [
  "anyhow",
  "batsat",
+ "rustsat",
+ "thiserror",
+]
+
+[[package]]
+name = "rustsat-glucose"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03266153f2934e975be0a507ce5ab52787b9240789faff7f7e4f30c344430f01"
+dependencies = [
+ "anyhow",
+ "bindgen",
+ "cmake",
  "rustsat",
  "thiserror",
 ]
