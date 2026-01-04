@@ -219,12 +219,19 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = std::fs::read_to_string("input.txt")?;
     let (shapes, queries) = parse_input(&input)?;
+    let mut num_solvable = 0;
     for (test_case, query) in queries.iter().enumerate() {
         if solve(&query, &shapes, test_case) {
-            println!("Case #{}: YES", test_case)
+            println!("Case #{}: YES", test_case);
+            num_solvable += 1;
         } else {
             println!("Case #{}: NO", test_case)
         }
     }
+    println!(
+        "Number of solvable cases: {}/{}",
+        num_solvable,
+        queries.len()
+    );
     Ok(())
 }
