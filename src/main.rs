@@ -159,6 +159,7 @@ fn rotate_shape_clockwise(shape: &PresentShape) -> PresentShape {
 
 fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
     // assumes all shapes don't have empty rows or cols
+    // TODO: Add assertion
     let rows = query.rows - (PRESENT_SIZE - 1);
     let cols = query.cols - (PRESENT_SIZE - 1);
 
