@@ -91,8 +91,8 @@ struct SolutionFormatter<'a> {
 
 impl<'a> std::fmt::Display for SolutionFormatter<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let rows = PRESENT_SIZE + self.query.rows;
-        let cols = PRESENT_SIZE + self.query.cols;
+        let rows = PRESENT_SIZE + self.query.rows - 1;
+        let cols = PRESENT_SIZE + self.query.cols - 1;
         let mut m: ndarray::Array2<Option<usize>> = ndarray::Array::default((rows, cols));
         for (i_shape, shape) in self.shapes.iter().enumerate() {
             for (i, j) in (0..rows).cartesian_product(0..cols) {
@@ -145,8 +145,8 @@ fn rotate_shape_clockwise(shape: &PresentShape) -> PresentShape {
 }
 
 fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
-    let rows = PRESENT_SIZE + query.rows;
-    let cols = PRESENT_SIZE + query.cols;
+    let rows = PRESENT_SIZE + query.rows - 1;
+    let cols = PRESENT_SIZE + query.cols - 1;
     let mut instance: SatInstance = SatInstance::new();
 
     let mut shapes: Vec<PresentShape> = shapes.into();
@@ -188,7 +188,7 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
         }
         instance.add_card_constr(CardConstraint::new_ub(
             literals,
-            if i >= PRESENT_SIZE && j >= PRESENT_SIZE && i < rows && j < cols {
+            if i >= PRESENT_SIZE - 1 && j >= PRESENT_SIZE - 1 && i < rows && j < cols {
                 1
             } else {
                 0
@@ -203,7 +203,7 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
             .unwrap();
     }
     if SOLVE {
-        let mut solver = rustsat_glucose::simp::Glucose::default();
+        let mut solver = rustsat_glucose::core::Glucose::default();
         solver.add_cnf(instance.into_cnf().0).unwrap();
         if matches!(solver.solve(), Ok(SolverResult::Sat)) {
             let solution = solver.full_solution().unwrap();
