@@ -12,8 +12,8 @@ use rustsat::{
 };
 
 const PRESENT_SIZE: usize = 3;
-const SOLVE: bool = false;
-const WRITE_DIMACS: bool = true;
+const SOLVE: bool = true;
+const WRITE_DIMACS: bool = false;
 const DIMACS_DIR: &str = "christmas_tree_farm";
 
 #[derive(Debug, Clone, Default)]
@@ -173,6 +173,8 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
         .sum();
     let available_volume: usize = query.rows * query.cols;
 
+    let total_required_presents: usize = query.present_requirements.iter().sum();
+
     let mut shapes: Vec<PresentShape> = shapes.into();
     let num_shapes = shapes.len();
     shapes.resize(num_shapes * 4, PresentShape::default());
@@ -221,7 +223,12 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
     }
     if SOLVE {
         if required_volume > available_volume {
+            println!("Trivialy Unsatisfiable");
             return false;
+        }
+        if query.rows / PRESENT_SIZE * query.cols / PRESENT_SIZE >= total_required_presents {
+            println!("Trivially Satisfiable");
+            return true;
         }
         let mut solver = rustsat_glucose::core::Glucose::default();
         solver.add_cnf(instance.into_cnf().0).unwrap();
