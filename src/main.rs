@@ -19,6 +19,17 @@ const DIMACS_DIR: &str = "christmas_tree_farm";
 #[derive(Debug, Clone, Default)]
 struct PresentShape([[bool; PRESENT_SIZE]; PRESENT_SIZE]);
 
+impl PresentShape {
+    fn volume(&self) -> usize {
+        self.0
+            .iter()
+            .map(|row| row.iter())
+            .flatten()
+            .filter(|x| **x)
+            .count()
+    }
+}
+
 #[derive(Debug)]
 struct Query {
     rows: usize,
@@ -148,6 +159,18 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
     let rows = PRESENT_SIZE + query.rows - 1;
     let cols = PRESENT_SIZE + query.cols - 1;
     let mut instance: SatInstance = SatInstance::new();
+
+    let shape_volumes: Vec<usize> = shapes.iter().map(|shape| shape.volume()).collect();
+    let required_volume: usize = query
+        .present_requirements
+        .iter()
+        .enumerate()
+        .map(|(i, c)| c * shape_volumes[i])
+        .sum();
+    let available_volume: usize = query.rows * query.cols;
+    if required_volume > available_volume {
+        return false;
+    }
 
     let mut shapes: Vec<PresentShape> = shapes.into();
     let num_shapes = shapes.len();
