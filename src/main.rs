@@ -12,7 +12,7 @@ use rustsat::{
 };
 
 const PRESENT_SIZE: usize = 3;
-const SOLVE: bool = true;
+const SOLVE: bool = false;
 const WRITE_DIMACS: bool = true;
 const DIMACS_DIR: &str = "christmas_tree_farm";
 
@@ -172,9 +172,6 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
         .map(|(i, c)| c * shape_volumes[i])
         .sum();
     let available_volume: usize = query.rows * query.cols;
-    if required_volume > available_volume {
-        return false;
-    }
 
     let mut shapes: Vec<PresentShape> = shapes.into();
     let num_shapes = shapes.len();
@@ -223,6 +220,9 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
             .unwrap();
     }
     if SOLVE {
+        if required_volume > available_volume {
+            return false;
+        }
         let mut solver = rustsat_glucose::core::Glucose::default();
         solver.add_cnf(instance.into_cnf().0).unwrap();
         if matches!(solver.solve(), Ok(SolverResult::Sat)) {
