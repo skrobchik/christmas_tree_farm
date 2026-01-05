@@ -13,7 +13,7 @@ use rustsat::{
 
 const PRESENT_SIZE: usize = 3;
 const SOLVE: bool = true;
-const WRITE_DIMACS: bool = false;
+const WRITE_DIMACS: bool = true;
 const DIMACS_DIR: &str = "christmas_tree_farm";
 
 #[derive(Debug, Clone, Default)]
@@ -102,11 +102,13 @@ struct SolutionFormatter<'a> {
 
 impl<'a> std::fmt::Display for SolutionFormatter<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let rows = PRESENT_SIZE + self.query.rows - 1;
-        let cols = PRESENT_SIZE + self.query.cols - 1;
+        let rows = self.query.rows;
+        let cols = self.query.cols;
         let mut m: ndarray::Array2<Option<usize>> = ndarray::Array::default((rows, cols));
         for (i_shape, shape) in self.shapes.iter().enumerate() {
-            for (i, j) in (0..rows).cartesian_product(0..cols) {
+            for (i, j) in
+                (0..rows - (PRESENT_SIZE - 1)).cartesian_product(0..cols - (PRESENT_SIZE - 1))
+            {
                 match self.solution.lit_value(self.shape_placed[(i_shape, i, j)]) {
                     rustsat::types::TernaryVal::False | rustsat::types::TernaryVal::DontCare => {
                         continue;
@@ -156,8 +158,10 @@ fn rotate_shape_clockwise(shape: &PresentShape) -> PresentShape {
 }
 
 fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
-    let rows = PRESENT_SIZE + query.rows - 1;
-    let cols = PRESENT_SIZE + query.cols - 1;
+    // assumes all shapes don't have empty rows or cols
+    let rows = query.rows - (PRESENT_SIZE - 1);
+    let cols = query.cols - (PRESENT_SIZE - 1);
+
     let mut instance: SatInstance = SatInstance::new();
 
     let shape_volumes: Vec<usize> = shapes.iter().map(|shape| shape.volume()).collect();
@@ -209,14 +213,7 @@ fn solve(query: &Query, shapes: &[PresentShape], test_case: usize) -> bool {
                 literals.push(shape_placed[(shape_index, i_shape, j_shape)]);
             }
         }
-        instance.add_card_constr(CardConstraint::new_ub(
-            literals,
-            if i >= PRESENT_SIZE - 1 && j >= PRESENT_SIZE - 1 && i < rows && j < cols {
-                1
-            } else {
-                0
-            },
-        ));
+        instance.add_card_constr(CardConstraint::new_ub(literals, 1));
     }
     let mut instance = instance.sanitize();
     instance.convert_to_cnf();
